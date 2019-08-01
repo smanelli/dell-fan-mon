@@ -1,0 +1,77 @@
+--- dell-fan-mon.c.orig	2019-07-29 18:49:46.100732037 +0200
++++ dell-fan-mon.c	2019-07-29 20:29:36.044713124 +0200
+@@ -323,6 +323,10 @@
+ 
+ void set_bios_fan_control(int enable)
+ {
++    static int oldEnable=-1;
++    if(oldEnable==enable)
++        return;
++    oldEnable=enable; 
+     if (!cfg.mode)
+     {
+         if (geteuid() != 0)
+@@ -466,7 +470,7 @@
+     monitor_show_legend();
+     monitor_init_state(0);
+     monitor_init_state(1);
+-
++    set_fans_state(cfg.t_low_fan);
+     unsigned long tick = cfg.tick * 1000; // 100 ms
+     int period_ticks = cfg.period / cfg.tick;
+     int fan_check_period_ticks = cfg.bios_disable_method ? period_ticks : cfg.fan_check_period / cfg.tick;
+@@ -514,7 +518,7 @@
+     monitor_get_temp_state(state_id);
+     state[state_id].temp_prev = state[state_id].temp;
+     state[state_id].fan_state = I8K_FAN_OFF;
+-    state[state_id].real_fan_state = state[state_id].fan_state;
++    state[state_id].real_fan_state = -1;
+     state[state_id].jump_timeout_ticks = cfg.jump_timeout / cfg.tick;
+ 
+     state[state_id].ignore_current_temp = 0; // jump_timeout_tick
+@@ -522,6 +526,11 @@
+ }
+ void monitor_set_fan_state(int state_id)
+ {
++        //if (cfg.verbose)
++        //{
++        //    printf("\nstate=%d, real_state=%d, last_stted=%d",state[state_id].fan_state,state[state_id].real_fan_state,state[state_id].last_setted_fan_state);
++        //    fflush(stdout);
++        //}   
+     // set fan state
+     if ((state[state_id].fan_state != state[state_id].last_setted_fan_state) && (state[state_id].fan_state != state[state_id].real_fan_state) && !cfg.monitor_only)
+     {
+@@ -581,6 +590,8 @@
+ void monitor_state(int state_id)
+ {
+ 
++    static int oldState=-1;
++
+     state[state_id].last_setted_fan_state = -1;
+     if (!state[state_id].ignore_current_temp)
+     {
+@@ -594,12 +605,20 @@
+             if (cfg.fan_ctrl_logic_mode)
+             {
+                 // simple: allow bios to control fans: stops/starts fans оnly at boundary temps
+-                if (state[state_id].temp <= cfg.t_low && state[state_id].real_fan_state > cfg.t_low_fan)
++                if (state[state_id].temp <= cfg.t_low && oldState != cfg.t_low_fan) {
++                    set_bios_fan_control(false);
+                     state[state_id].fan_state = cfg.t_low_fan;
+-                else if (state[state_id].temp >= cfg.t_high && state[state_id].real_fan_state < cfg.t_high_fan)
++                    
++                }
++                else if (state[state_id].temp >= cfg.t_high && oldState != cfg.t_high_fan) {
++                    set_bios_fan_control(false);
+                     state[state_id].fan_state = cfg.t_high_fan;
+-                else
+-                    state[state_id].fan_state = state[state_id].real_fan_state;
++                    
++                }
++                else {
++                    state[state_id].fan_state = -1;
++                    set_bios_fan_control(true);
++                }
+             }
+             else
+             {
